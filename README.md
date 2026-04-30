@@ -6,7 +6,7 @@ Inspired by [marlonrichert/zsh-autocomplete](https://github.com/marlonrichert/zs
 
 ## Requirements
 
-- **Zsh 5.9+** (uses the `line-pre-redraw` hook)
+- **Zsh 5.9+** (uses **`zle-line-pre-redraw-functions`**)
 - `curl` and `jq` on `PATH`
 - **OpenAI** or any **OpenAI-compatible** server (including **[Ollama](https://ollama.com)** on port 11434)
 
@@ -75,6 +75,42 @@ Then `source` the plugin. Requests use `stream:false` in the JSON body so the cl
 | `ZSH_AI_TIMEOUT` | `12` | `curl --max-time` |
 | `ZSH_AI_CURL_OPTS` | *(empty)* | Extra args to `curl` (split on spaces) |
 | `ZSH_AI_SILENT` | unset | If set, suppress missing-key messages |
+| `ZSH_AI_DEBUG` | unset | If set, write detailed logs to `ZSH_AI_LOG` |
+| `ZSH_AI_LOG` | `/tmp/zsh-ai-autocomplete.log` | Log file path (used when `ZSH_AI_DEBUG` is set) |
+
+## Debugging
+
+### Quick one-shot test (no ZLE needed)
+
+```sh
+source /path/to/zsh-ai-autocomplete/zsh-ai-autocomplete.plugin.zsh
+zsh-ai-test list files in current directory
+```
+
+This prints config, the HTTP request/response, and parsed suggestions — all without needing ZLE or typing. Use it to verify your API key, URL, and model work.
+
+### Debug mode (live logging)
+
+Enable debug logging to see every step the plugin takes during interactive use:
+
+```sh
+export ZSH_AI_DEBUG=1
+exec zsh
+```
+
+Then type something in the terminal. In another terminal watch the log:
+
+```sh
+tail -f /tmp/zsh-ai-autocomplete.log
+```
+
+The log shows: schedule events, debounce timing, curl requests, raw API responses, parsed suggestions, and TRAPUSR1 handling. Turn off with `unset ZSH_AI_DEBUG; exec zsh`.
+
+## Powerlevel10k instant prompt
+
+This plugin avoids printing during startup unless `ZSH_AI_VERBOSE` is set. It registers redraw hooks via **`add-zle-hook-widget`** (or falls back to **`zle-line-pre-redraw-functions`**) and does not use **`add-zsh-hook line-pre-redraw`**, which older framework copies may reject with `Usage: add-zsh-hook`.
+
+Still follow [p10k instant prompt](https://github.com/romkatv/powerlevel10k#instant-prompt): run `typeset -g POWERLEVEL9K_INSTANT_PROMPT=quiet` or source heavy plugins after the instant-prompt preamble, or keep them silent.
 
 ## Security
 
@@ -85,6 +121,7 @@ Then `source` the plugin. Requests use `stream:false` in the JSON body so the cl
 
 - Uses **USR1** for async refresh; another plugin that sets `TRAPUSR1` may conflict.
 - With AI suggestions visible, **Tab** accepts a suggestion instead of completing; change the line or disable the plugin if you need Tab completion only.
+- On **Zsh versions older than 5.9**, the plugin exits quietly while sourcing unless **`ZSH_AI_VERBOSE`** is set.
 
 ## License
 
