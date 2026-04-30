@@ -1,26 +1,24 @@
 # zsh-ai-autocomplete
 
-Zsh plugin that suggests **shell commands from what you type**, including **natural language** (for example: you type `list directory` and see ghost hints like `ls -l`). Suggestions are fetched from an **OpenAI-compatible** HTTP API (`/v1/chat/completions`).
-
-Inspired by [marlonrichert/zsh-autocomplete](https://github.com/marlonrichert/zsh-autocomplete): suggestions update as you type (debounced) and you can accept or cycle them from the keyboard.
+Zsh plugin that suggests **shell commands using AI**, including from **natural language** input. Type `zshai search text in file` and get suggestions like `grep -r "text" .`. Powered by any **OpenAI-compatible** API, including **[Ollama](https://ollama.com)** for fully local/private usage.
 
 ## Requirements
 
-- **Zsh 5.9+** (uses **`zle-line-pre-redraw-functions`**)
+- **Zsh 5.9+**
 - `curl` and `jq` on `PATH`
-- **OpenAI** or any **OpenAI-compatible** server (including **[Ollama](https://ollama.com)** on port 11434)
+- **OpenAI** or any **OpenAI-compatible** server (including **Ollama**)
 
 ## Install
 
-Clone or copy this repo, then in `~/.zshrc` (before any heavy completion customization, if possible):
+Clone this repo and add to `~/.zshrc` (**at the end**, after other plugins):
 
 ```sh
 source /path/to/zsh-ai-autocomplete/zsh-ai-autocomplete.plugin.zsh
 ```
 
-Restart the shell: `exec zsh`
+Restart: `exec zsh`
 
-## Onboarding (config file)
+## Onboarding
 
 Run the interactive wizard:
 
@@ -28,100 +26,139 @@ Run the interactive wizard:
 zsh-ai-onboard
 ```
 
-Choose **ollama** or **openai**. It writes `~/.config/zsh-ai-autocomplete/config.zsh`. Then:
+Choose **ollama** or **openai**. It writes `~/.config/zsh-ai-autocomplete/config.zsh`.
+
+### Ollama quick start
+
+With [Ollama](https://github.com/ollama/ollama) running and a model pulled:
 
 ```sh
-source ~/.config/zsh-ai-autocomplete/config.zsh
-exec zsh
-```
+ollama pull gemma3:1b          # recommended minimum
+# ollama pull gemma4:e2b       # better quality, slower (~20s)
 
-### Ollama quick start (e.g. `gemma3:270m`)
-
-With [Ollama](https://github.com/ollama/ollama) running and the model pulled (`ollama pull gemma3:270m`), a minimal config is:
-
-```sh
 export ZSH_AI_PROVIDER=ollama
-# Optional: ZSH_AI_API_KEY — not needed for default local Ollama
-# Defaults: ZSH_AI_BASE_URL=http://127.0.0.1:11434/v1 , ZSH_AI_MODEL=gemma3:270m
+# Defaults: ZSH_AI_BASE_URL=http://127.0.0.1:11434/v1, ZSH_AI_MODEL=gemma3:1b
 ```
 
-Then `source` the plugin. Requests use `stream:false` in the JSON body so the client can parse one JSON object (no SSE).
+### Model recommendations
+
+| Model | Size | Speed | Quality | Notes |
+|-------|------|-------|---------|-------|
+| `gemma3:270m` | 268M | ~1s | Poor | Too small to follow instructions |
+| `gemma3:1b` | 1B | ~4s | OK | Default for Ollama, decent results |
+| `gemma4:e2b` | 5.1B | ~20s | Excellent | Best quality, needs patience |
+| `gpt-4o-mini` | cloud | ~1s | Excellent | Default for OpenAI |
 
 ## Usage
 
-1. Type at least **`ZSH_AI_MIN_CHARS`** characters (default **2**).
-2. After a short pause (**`ZSH_AI_DEBOUNCE`**, default **0.45s**), the plugin requests suggestions.
-3. **Inline ghost text** (dim) appears **after** your input on the same row:
-   - If your buffer is a **prefix** of the active suggestion, the ghost is only the **rest** of that command (like `zsh-autosuggestions`).
-   - If not (e.g. natural language), the ghost shows the **full** suggested command after two spaces.
-4. **Extra candidates** (if any) appear as dim lines **below** that ghost line.
-5. **Tab** — replace the line with the **active** suggestion (full command).
-6. **Ctrl+X Ctrl+N** — next suggestion (updates ghost + list).
-7. **Shift+Tab** — previous suggestion.
-8. If there are no AI suggestions yet, **Tab** runs normal **expand-or-complete**.
+AI suggestions are triggered **on demand** — no API calls on every keystroke.
 
-## Configuration (environment)
+### Two ways to trigger
+
+**1. Hotkey: `Ctrl-G`**
+
+Type anything, then press `Ctrl-G` to get AI suggestions:
+
+```
+❯ find large files in current dir    # type this, press Ctrl-G
+▶ find . -size +100M -type f
+  du -ah . | sort -rh | head -20
+  find . -maxdepth 1 -size +50M
+  ls -lhS
+  find . -type f -exec ls -lh {} + | sort -k5 -rh | head
+[^Y accept | ^X ^N next | ^X ^P prev]
+```
+
+**2. Prefix: `zshai <query>` + Enter**
+
+Type `zshai` followed by a natural language query, then press Enter:
+
+```
+❯ zshai search text in file          # press Enter
+▶ grep -r "text" .
+  grep -rn "text" *.txt
+  find . -name "*.txt" -exec grep -l "text" {} \;
+  ag "text"
+  rg "text"
+[^Y accept | ^X ^N next | ^X ^P prev]
+```
+
+The `zshai` prefix is stripped automatically — it won't try to run as a command.
+
+### Keybindings
+
+| Key | Action |
+|-----|--------|
+| `Ctrl-G` | Trigger AI suggestions for current input |
+| `Ctrl-Y` | Accept the highlighted (`▶`) suggestion |
+| `Ctrl-X Ctrl-N` | Cycle to next suggestion |
+| `Ctrl-X Ctrl-P` | Cycle to previous suggestion |
+| `Enter` | Normal execute (or trigger if prefixed with `zshai`) |
+
+## Configuration
+
+All settings via environment variables or `~/.config/zsh-ai-autocomplete/config.zsh`:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `ZSH_AI_CONFIG_FILE` | `~/.config/zsh-ai-autocomplete/config.zsh` | Sourced if readable |
-| `ZSH_AI_PROVIDER` | `openai` | Set to `ollama` for local defaults (no API key required) |
-| `ZSH_AI_BASE_URL` | depends on provider | API root (must include `/v1` for compatibility mode) |
-| `ZSH_AI_MODEL` | `gpt-4o-mini` or `gemma3:270m` (ollama) | Model name |
-| `ZSH_AI_API_KEY` | *(unset)* | Sent as `Authorization: Bearer` only if non-empty |
-| `ZSH_AI_DEBOUNCE` | `0.45` | Seconds after typing before request |
-| `ZSH_AI_MIN_CHARS` | `2` | Minimum buffer length to query |
-| `ZSH_AI_MAX_SUGGESTIONS` | `5` | Max lines to ask the model for |
-| `ZSH_AI_TIMEOUT` | `12` | `curl --max-time` |
-| `ZSH_AI_CURL_OPTS` | *(empty)* | Extra args to `curl` (split on spaces) |
-| `ZSH_AI_SILENT` | unset | If set, suppress missing-key messages |
-| `ZSH_AI_DEBUG` | unset | If set, write detailed logs to `ZSH_AI_LOG` |
-| `ZSH_AI_LOG` | `/tmp/zsh-ai-autocomplete.log` | Log file path (used when `ZSH_AI_DEBUG` is set) |
+| `ZSH_AI_PROVIDER` | `openai` | `ollama` for local defaults |
+| `ZSH_AI_BASE_URL` | depends on provider | API root (must include `/v1`) |
+| `ZSH_AI_MODEL` | `gpt-4o-mini` / `gemma3:1b` | Model name |
+| `ZSH_AI_API_KEY` | *(unset)* | Bearer token (optional for Ollama) |
+| `ZSH_AI_PREFIX` | `zshai` | Prefix that triggers AI on Enter |
+| `ZSH_AI_MAX_SUGGESTIONS` | `5` | Max suggestions to request |
+| `ZSH_AI_TIMEOUT` | `20` | `curl --max-time` in seconds |
+| `ZSH_AI_CURL_OPTS` | *(empty)* | Extra `curl` args |
+| `ZSH_AI_DEBUG` | *(unset)* | Set to `1` for debug logging |
+| `ZSH_AI_LOG` | `$TMPDIR/zsh-ai-autocomplete.log` | Log file path |
 
 ## Debugging
 
-### Quick one-shot test (no ZLE needed)
+### Quick test (no ZLE needed)
 
 ```sh
-source /path/to/zsh-ai-autocomplete/zsh-ai-autocomplete.plugin.zsh
-zsh-ai-test list files in current directory
+zsh-ai-test search text in file
 ```
 
-This prints config, the HTTP request/response, and parsed suggestions — all without needing ZLE or typing. Use it to verify your API key, URL, and model work.
+Prints config, HTTP request/response, and parsed suggestions.
 
-### Debug mode (live logging)
-
-Enable debug logging to see every step the plugin takes during interactive use:
+### Debug mode
 
 ```sh
 export ZSH_AI_DEBUG=1
 exec zsh
 ```
 
-Then type something in the terminal. In another terminal watch the log:
+Watch logs in another terminal:
 
 ```sh
-tail -f /tmp/zsh-ai-autocomplete.log
+tail -f $TMPDIR/zsh-ai-autocomplete.log
 ```
 
-The log shows: schedule events, debounce timing, curl requests, raw API responses, parsed suggestions, and TRAPUSR1 handling. Turn off with `unset ZSH_AI_DEBUG; exec zsh`.
+### Status check
 
-## Powerlevel10k instant prompt
+```sh
+zsh-ai-status
+```
 
-This plugin avoids printing during startup unless `ZSH_AI_VERBOSE` is set. It registers redraw hooks via **`add-zle-hook-widget`** (or falls back to **`zle-line-pre-redraw-functions`**) and does not use **`add-zsh-hook line-pre-redraw`**, which older framework copies may reject with `Usage: add-zsh-hook`.
+Shows config, keybindings, and Ollama connectivity.
 
-Still follow [p10k instant prompt](https://github.com/romkatv/powerlevel10k#instant-prompt): run `typeset -g POWERLEVEL9K_INSTANT_PROMPT=quiet` or source heavy plugins after the instant-prompt preamble, or keep them silent.
+## Compatibility
+
+- **Powerlevel10k**: No console output during init. Source the plugin at the end of `~/.zshrc`.
+- **fzf / zsh-autosuggestions**: No keybinding conflicts — uses `Ctrl-G`, `Ctrl-Y`, `Ctrl-X` combos.
+- **Oh My Zsh**: Works as a custom plugin or direct source.
 
 ## Security
 
-- The model may suggest dangerous commands. **Nothing runs automatically**; you always press **Enter** yourself.
-- Keep secrets in `config.zsh` with permissions **600**.
+- **Nothing runs automatically.** Suggestions are displayed; you choose to accept and execute.
+- Keep API keys in `config.zsh` with permissions **600**.
 
 ## Limitations
 
-- Uses **USR1** for async refresh; another plugin that sets `TRAPUSR1` may conflict.
-- With AI suggestions visible, **Tab** accepts a suggestion instead of completing; change the line or disable the plugin if you need Tab completion only.
-- On **Zsh versions older than 5.9**, the plugin exits quietly while sourcing unless **`ZSH_AI_VERBOSE`** is set.
+- Uses **USR1** signal for async refresh; conflicts with plugins that also trap `TRAPUSR1`.
+- Small local models (< 1B params) give poor suggestions. Use at least `gemma3:1b`.
+- First request to a model may be slow (cold start while Ollama loads weights).
 
 ## License
 
